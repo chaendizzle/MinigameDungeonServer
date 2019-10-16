@@ -129,4 +129,4 @@ def signup():
 
 if __name__ == '__main__':
     main()
-    app.run(port=42069)
+    app.run(host='0.0.0.0', port=42069)
