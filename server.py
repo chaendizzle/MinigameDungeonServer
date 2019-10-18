@@ -127,6 +127,6 @@ def signup():
     print('Valid email %s received, appending to spreadsheet.' % email)
     return ''
 
+main()
 if __name__ == '__main__':
-    main()
     app.run(host='0.0.0.0', port=42069)
