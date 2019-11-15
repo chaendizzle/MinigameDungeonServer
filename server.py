@@ -10,12 +10,14 @@ import binascii
 import os
 from flask import Flask, session, redirect, render_template
 from flask import request, abort, jsonify
-from flask_session import Session
 import time
 from datetime import datetime
 import textwrap
 import re
 from validate_email import validate_email
+import requests
+import threading
+import sys
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -48,7 +50,7 @@ def append(sheet_range, rows):
         'values': rows
     }
     SPREADSHEET.values().append(spreadsheetId=SPREADSHEET_ID, range=sheet_range,
-                                valueInputOption='USER_ENTERED',
+                                valueInputOption='RAW',
                                 insertDataOption='INSERT_ROWS',
                                 body=body).execute()
 
@@ -102,6 +104,58 @@ def main():
     EMAIL_PATTERN = re.compile(EMAIL_REGEX)
 
 """
+TESTS
+"""
+def test_remove(removeList):
+    """
+    Remove emails for testing purposes. Never called normally.
+    """
+    users = fetch(SIGNUP_RANGE, SIGNUP_DEFAULT_ROW)
+    removed = []
+    for user in users:
+        if user[1].strip() in removeList:
+            removed.append(SIGNUP_DEFAULT_ROW)
+        else:
+            removed.append(user)
+    update(SIGNUP_RANGE, removed)
+
+def setup_tests():
+    test_remove(['eschen3@wisc.edu'])
+
+def test_url(name, status_code, url):
+    print("Running test " + str(name) + '...')
+    URL = 'http://minecraft.scrollingnumbers.com:42069'
+    try:
+        test = requests.get(URL + url, timeout=2)
+        if test.status_code != status_code:
+            print('Test failed: ' + str(name))
+            print('Expected: HTTP Status Code ' + str(status_code) + '. Got: ' + str(test.status_code))
+            return False
+    except requests.exceptions.RequestException as e:
+        print('Test failed: ' + str(name))
+        print('Expected: HTTP Status Code ' + str(status_code) + '. Got: ' + str(e))
+        return False
+    return True
+
+def run_tests():
+    print("Running tests...")
+    setup_tests()
+    time.sleep(4)
+    conn = test_url('Connectivity', 404, '/signup')
+    valid = test_url('Valid Email', 200, '/signup?email=eschen3@wisc.edu')
+    invalid = test_url('Invalid Email', 400, '/signup?email=evansschen@gmail.com')
+    nonex = test_url('Nonexistent Email', 406, '/signup?email=eschen35@wisc.edu')
+    dup = test_url('Duplicate Email', 422, '/signup?email=eschen3@wisc.edu')
+    teardown_tests()
+    if conn and valid and invalid and nonex and dup:
+        print("All tests passed.")
+    else:
+        print("Tests failed.")
+
+def teardown_tests():
+    test_remove(['eschen3@wisc.edu'])
+
+"""
 WEB ROUTE METHODS
 """
 @app.route('/', methods=['GET'])
@@ -142,10 +196,17 @@ def signup():
             return
     # append the email to the spreadsheet
     now = datetime.now()
-    append(SIGNUP_RANGE, [[now.strftime('%m/%d/%Y %H:%M:%S'), email]])
-    print('Valid email %s received, appending to spreadsheet.' % email)
+    strnow = str(now.strftime('%m/%d/%Y %H:%M:%S'));
+    append(SIGNUP_RANGE, [[strnow, email]])
+    print('Valid email %s received, appending [%s, %s] to spreadsheet.' % (email, strnow, email))
     return ''
 
 main()
 if __name__ == '__main__':
+    t = None
+    if len(sys.argv) >= 2 and sys.argv[1] == 'test':
+        t = threading.Thread(target=run_tests)
+        t.start()
     app.run(host='0.0.0.0', port=42069)
+    if t:
+        t.join()
