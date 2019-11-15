@@ -14,6 +14,8 @@ from flask_session import Session
 import time
 from datetime import datetime
 import textwrap
+import re
+from validate_email import validate_email
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -28,6 +30,10 @@ SPREADSHEET = None
 app = Flask(__name__)
 
 SIGNUP_DEFAULT_ROW = ['', '']
+
+EMAIL_REGEX = """(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"""
+
+EMAIL_PATTERN = None
 
 # if in development mode, use development spreadsheet.
 # otherwise, use production spreadsheet.
@@ -91,8 +97,12 @@ def main():
     global SPREADSHEET
     SPREADSHEET = service.spreadsheets()
 
+    # compile the email regex pattern
+    global EMAIL_PATTERN
+    EMAIL_PATTERN = re.compile(EMAIL_REGEX)
+
 """
-WEB UI METHODS
+WEB ROUTE METHODS
 """
 @app.route('/', methods=['GET'])
 def index():
@@ -103,17 +113,26 @@ def signup():
     # get email
     email = None
     if request.method == 'POST':
-        email = request.forms.get('email')
+        email = request.form.get('email')
     elif DEV_MODE:
         email = request.args.get('email')
     if not email:
         print('No email provided in request.')
-        abort(400)
+        abort(404)
         return
     # remove all equals signs from beginning to prevent google sheets injection
-    email = str(email).lstrip('=')
-    # TODO: verify email with wisc.edu servers via SMTP
-    
+    email = str(email).lstrip('=').strip()
+    # check that the email is a UW student email
+    if not email.endswith('@wisc.edu') or not re.match(EMAIL_PATTERN, email): 
+        print('Email ' + email + ' is not a valid UW email.')
+        abort(400)
+        return
+    # verify email with wisc.edu servers via SMTP
+    is_valid = validate_email(email_address=email, smtp_timeout=3)
+    if not is_valid:
+        print('Email ' + email + ' is not an existing UW email.')
+        abort(406)
+        return
     # verify that the email is unique in the spreadsheet
     users = fetch(SIGNUP_RANGE, SIGNUP_DEFAULT_ROW)
     for user in users:
