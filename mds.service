@@ -1,0 +1,10 @@
+[Unit]
+Description=Minigame Dungeon Server
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/mac/MinigameDungeonServer/MinigameDungeonServer/server_watchdog.py
+
+[Install]
+WantedBy=multi-user.target
+
